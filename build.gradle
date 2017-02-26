@@ -1,0 +1,57 @@
+apply plugin: "c"
+
+defaultTasks "clean", "dependencies", "watch", "build"
+
+def path = System.getProperty("user.dir")
+def aptPackages = ["build-essential"]
+
+task watch(type: Exec) {
+  inputs.dir "${path}/src"
+  commandLine "true"
+
+  new ByteArrayOutputStream()
+}
+
+task dependencies() {
+  description "Installs all dependencies"
+
+  dependsOn {
+    tasks.findAll { task ->
+      task.name.startsWith("dependencies") && !task.name.equals("dependencies")
+    }
+  }
+}
+
+task dependenciesApt(type: Exec) {
+  description "Installs apt dependencies."
+  workingDir path
+  commandLine "apt-get"
+  args = ["install", "-y"] + aptPackages
+
+  new ByteArrayOutputStream()
+}
+
+model {
+  components {
+    def tree = fileTree(dir: "${path}/src/source", include: "**/*.c")
+
+    tree.each {File file ->
+      def fileName = file.getName()
+      def fileNameNoExt = fileName.split("\\.")[0]
+
+      "examples_${fileNameNoExt}"(NativeExecutableSpec) {
+        sources {
+          c {
+            source {
+              srcDir "src/source"
+              include "**/$fileName"
+            }
+            exportedHeaders {
+              srcDir "src/include"
+            }
+          }
+        }
+      }
+    }
+  }
+}
