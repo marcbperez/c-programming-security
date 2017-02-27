@@ -1,1 +1,4 @@
-
+*.log
+*.out
+build
+.gradle
