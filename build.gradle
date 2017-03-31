@@ -1,19 +1,27 @@
 apply plugin: "c"
 
-defaultTasks "clean", "dependencies", "watch", "build"
+defaultTasks "wrapper", "clean", "watch", "dependencies", "build", "test"
 
+def aptPackages = ["libspock-java", "build-essential", "gcc-5"]
 def path = System.getProperty("user.dir")
-def aptPackages = ["build-essential"]
+def srcDirPath = "${path}/src"
+def testDirPath = "${path}/test"
+
+task wrapper(type: Wrapper) {
+  description "Creates the project wrapper."
+  gradleVersion = "3.4.1"
+}
 
 task watch(type: Exec) {
-  inputs.dir "${path}/src"
+  description "Watches for changes."
+  inputs.files(srcDirPath, testDirPath)
   commandLine "true"
 
   new ByteArrayOutputStream()
 }
 
 task dependencies() {
-  description "Installs all dependencies"
+  description "Installs all dependencies."
 
   dependsOn {
     tasks.findAll { task ->
@@ -22,8 +30,17 @@ task dependencies() {
   }
 }
 
-task dependenciesApt(type: Exec) {
-  description "Installs apt dependencies."
+task aptUpdate(type: Exec) {
+  description "Updates APT repository information."
+  workingDir path
+  commandLine "apt-get"
+  args "update"
+
+  new ByteArrayOutputStream()
+}
+
+task dependenciesApt(type: Exec, dependsOn: aptUpdate) {
+  description "Installs APT dependencies."
   workingDir path
   commandLine "apt-get"
   args = ["install", "-y"] + aptPackages
@@ -33,18 +50,18 @@ task dependenciesApt(type: Exec) {
 
 model {
   components {
-    def tree = fileTree(dir: "${path}/src/source", include: "**/*.c")
+    def sourcesTree = fileTree(dir: "${path}/src/source", include: "**/*.c")
 
-    tree.each {File file ->
+    sourcesTree.each { File file ->
       def fileName = file.getName()
       def fileNameNoExt = fileName.split("\\.")[0]
 
-      "examples_${fileNameNoExt}"(NativeExecutableSpec) {
+      "${fileNameNoExt}"(NativeExecutableSpec) {
         sources {
-          c {
+          "${fileNameNoExt}"(CSourceSet) {
             source {
               srcDir "src/source"
-              include "**/$fileName"
+              include "**/${fileName}"
             }
             exportedHeaders {
               srcDir "src/include"
@@ -53,5 +70,28 @@ model {
         }
       }
     }
+  }
+}
+
+task test() {
+  description "Runs all test cases."
+
+  dependsOn {
+    tasks.findAll { task ->
+      task.name.startsWith("test") && !task.name.equals("test")
+    }
+  }
+}
+
+fileTree(dir: "${testDirPath}", include: "**/*.groovy").each { File testFile ->
+  def fileName = testFile.getName().split("\\.")[0]
+
+  task "test${fileName}"(type: Exec) {
+    description "Runs the ${fileName} case."
+    workingDir path
+    commandLine "groovy"
+    args "-cp", "/usr/share/java/spock-core.jar", testFile
+
+    new ByteArrayOutputStream()
   }
 }
